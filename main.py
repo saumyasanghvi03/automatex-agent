@@ -35,35 +35,74 @@ def _extract_text_from_csv(file_path):
     except Exception as e:
         return f"Error processing CSV {file_path}: {e}"
 
+def _score_lead(line_text):
+    """
+    Scores a lead based on keywords found in the text.
+    Returns a score (0-100) and a category ('Hot', 'Warm', 'Cold').
+    """
+    score = 50  # Base score
+    category = 'Warm'
+
+    hot_keywords = ['ceo', 'head of', 'founder', 'cto', 'president']
+    cold_keywords = ['general inquiries', 'contact@', 'info@']
+
+    line_lower = line_text.lower()
+
+    if any(keyword in line_lower for keyword in hot_keywords):
+        score = 90
+        category = 'Hot'
+    elif any(keyword in line_lower for keyword in cold_keywords):
+        score = 20
+        category = 'Cold'
+
+    return score, category
+
 def extract_leads_from_text(text):
     """
-    Extracts lead information (name and email) from a block of text.
+    Extracts lead information (name, email, title, company) from a block of text.
     """
     leads = []
-    # Regex to find email addresses
     email_regex = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
 
     lines = text.split('\n')
     for line in lines:
         emails = re.findall(email_regex, line)
         if emails:
-            # For simplicity, we'll assume the name is on the same line as the email.
-            # This is a basic heuristic and can be improved.
-            name = line.replace(emails[0], '').strip()
-            # Clean up potential extra characters or words
-            name = re.sub(r'Email:?', '', name, flags=re.IGNORECASE).strip()
-            name = re.sub(r'Contact:?', '', name, flags=re.IGNORECASE).strip()
-            name = ' '.join(name.split()[:3]) # Assume name is at most 3 words
+            email = emails[0]
 
-            for email in emails:
-                leads.append({
-                    "name": name if name else "N/A",
-                    "email": email,
-                    "company": "N/A",
-                    "title": "N/A",
-                    "phone": "N/A",
-                    "location": "N/A"
-                })
+            # Final regex attempt
+            pattern = re.compile(r'([\w\s]+),\s(.*?)\s(?:at|of)\s(.*?)(?:\.|\sContact|$)', re.IGNORECASE)
+            match = pattern.search(line)
+
+            if match:
+                name = match.group(1).replace('-', '').strip()
+                title = match.group(2).strip()
+                company = match.group(3).strip()
+            else:
+                # Fallback for simple cases
+                name = line.split(',')[0].replace('-', '').strip()
+                title = "N/A"
+                company = "N/A"
+
+            # Cleanup for general inquiries
+            if "general inquiries" in line.lower():
+                name = "General Inquiry"
+                company = "N/A"
+                title = "N/A"
+
+
+            score, category = _score_lead(line)
+
+            leads.append({
+                "name": name if name else "N/A",
+                "email": email,
+                "company": company,
+                "title": title,
+                "phone": "N/A",
+                "location": "N/A",
+                "score": score,
+                "category": category
+            })
     return leads
 
 def extract_text_from_document(file_path):
